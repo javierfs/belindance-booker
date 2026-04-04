@@ -6,7 +6,7 @@ from .scraper import Scraper
 from .scanner import find_private_classes, PrivateClass
 from .state import load_state, save_state
 from . import notifier
-from .exceptions import BookingFailed
+from .exceptions import BookingFailed, LoginError
 
 
 def run(config: Config) -> None:
@@ -17,18 +17,30 @@ def run(config: Config) -> None:
         return
 
     scraper = Scraper(config.wb_email, config.wb_password, config.box_url)
-    scraper.login()
+    state_dirty = False
 
-    candidates = find_private_classes(scraper, config.class_name)
+    cached_cookies = state.get("cookies", [])
+    if cached_cookies:
+        scraper.login_with_cookies(cached_cookies)
+    else:
+        state["cookies"] = scraper.login_with_playwright()
+        state_dirty = True
+
+    try:
+        candidates = find_private_classes(scraper, config.class_name)
+    except LoginError:
+        logging.warning("Cookies expired, re-logging in with browser")
+        state["cookies"] = scraper.login_with_playwright()
+        state_dirty = True
+        candidates = find_private_classes(scraper, config.class_name)
+
     logging.info("Found %d bookable private class(es)", len(candidates))
 
-    booked_dates = [
-        datetime.date.fromisoformat(b["date"]) for b in state["bookings"]
-    ]
-
+    booked_dates = [datetime.date.fromisoformat(b["date"]) for b in state["bookings"]]
     target = _pick_candidate(candidates, booked_dates, config.min_days_between)
+
     if target is None:
-        logging.info("No suitable class found (all too close to existing bookings or none available)")
+        logging.info("No suitable class found (none available or all too close to existing bookings)")
         state["consecutive_errors"] = 0
         save_state(config.gist_id, config.gh_pat, state)
         return
@@ -37,6 +49,8 @@ def run(config: Config) -> None:
 
     if config.dry_run:
         logging.info("DRY RUN — skipping actual booking")
+        if state_dirty:
+            save_state(config.gist_id, config.gh_pat, state)
         notifier.send(
             config.telegram_bot_token,
             config.telegram_chat_id,
@@ -52,13 +66,12 @@ def run(config: Config) -> None:
         _maybe_alert(config, state["consecutive_errors"], f"Booking failed: {e}")
         raise
 
-    booking_record = {
+    state["bookings"].append({
         "date": target.date.isoformat(),
         "time": target.time,
         "class_id": target.class_id,
         "booked_at": datetime.datetime.utcnow().isoformat(),
-    }
-    state["bookings"].append(booking_record)
+    })
     state["consecutive_errors"] = 0
     save_state(config.gist_id, config.gh_pat, state)
 
@@ -77,10 +90,7 @@ def _pick_candidate(
     min_days: int,
 ) -> PrivateClass | None:
     for c in candidates:
-        too_close = any(
-            abs((c.date - d).days) < min_days for d in booked_dates
-        )
-        if not too_close:
+        if not any(abs((c.date - d).days) < min_days for d in booked_dates):
             return c
     return None
 

@@ -44,10 +44,10 @@ except InvalidWodBusterResponse as e:
     print(f"Unexpected response: {e}")
     sys.exit(1)
 
-print(f"\n--- Fetching schedule for next 7 days from {box_url} ---")
-today = datetime.date.today()
-for i in range(7):
-    date = today + datetime.timedelta(days=i)
+print(f"\n--- Fetching schedule for March 2026 from {box_url} ---")
+start = datetime.date(2026, 3, 1)
+for i in range(31):
+    date = start + datetime.timedelta(days=i)
     try:
         data, epoch = scraper.get_classes(date)
         classes = data.get("Data") or []

@@ -1,7 +1,8 @@
 import datetime
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, Future
 from dataclasses import dataclass
+from threading import Event
 
 from .scraper import Scraper
 from .exceptions import InvalidWodBusterResponse
@@ -22,8 +23,11 @@ def find_private_classes(scraper: Scraper, class_name: str) -> list[PrivateClass
     dates = [today + datetime.timedelta(days=i) for i in range((last_day - today).days + 1)]
 
     results: list[PrivateClass] = []
+    stop = Event()
 
     def scan_date(date: datetime.date) -> list[PrivateClass]:
+        if stop.is_set():
+            return []
         try:
             data, epoch = scraper.get_classes(date)
         except InvalidWodBusterResponse as e:
@@ -60,7 +64,10 @@ def find_private_classes(scraper: Scraper, class_name: str) -> list[PrivateClass
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = {executor.submit(scan_date, d): d for d in dates}
         for future in as_completed(futures):
-            results.extend(future.result())
+            batch = future.result()
+            results.extend(batch)
+            if batch:
+                stop.set()  # found something — let pending scans finish but skip new ones
 
     results.sort(key=lambda c: (c.date, c.time))
     return results

@@ -2,7 +2,7 @@ import datetime
 import logging
 import requests
 import pytz
-from bs4 import BeautifulSoup
+from urllib.parse import urlparse
 
 from .exceptions import LoginError, InvalidWodBusterResponse, CloudflareBlocked, BookingFailed
 
@@ -25,71 +25,60 @@ class Scraper:
         self._session = requests.Session()
         self.logged = False
 
-    def login(self) -> None:
-        if self.logged:
-            return
-
-        login_url = "https://wodbuster.com/account/login.aspx"
-        initial = self._session.get(login_url, headers=_HEADERS, timeout=10)
-        self._check_cloudflare(initial)
-
-        try:
-            soup = BeautifulSoup(initial.content, "lxml")
-            viewstatec = soup.find(id="__VIEWSTATEC")["value"]
-            eventvalidation = soup.find(id="__EVENTVALIDATION")["value"]
-            csrftoken = soup.find(id="CSRFToken")["value"]
-        except TypeError as e:
-            raise InvalidWodBusterResponse("Could not parse WodBuster login page") from e
-
-        data_login = {
-            "ctl00$ctl00$body$ctl00": "ctl00$ctl00$body$ctl00|ctl00$ctl00$body$body$CtlLogin$CtlAceptar",
-            "ctl00$ctl00$body$body$CtlLogin$IoTri": "",
-            "ctl00$ctl00$body$body$CtlLogin$IoTrg": "",
-            "ctl00$ctl00$body$body$CtlLogin$IoTra": "",
-            "ctl00$ctl00$body$body$CtlLogin$IoEmail": self._email,
-            "ctl00$ctl00$body$body$CtlLogin$IoPassword": self._password,
-            "ctl00$ctl00$body$body$CtlLogin$cIoUid": "",
-            "ctl00$ctl00$body$body$CtlLogin$CtlAceptar": "Aceptar\n",
-        }
-
-        login_resp = self._post_form(login_url, viewstatec, eventvalidation, csrftoken, data_login)
-
-        if 'class="Warning"' in login_resp.text:
-            raise LoginError("Invalid WodBuster credentials")
-
-        viewstatec2 = self._parse_hidden_value(login_resp.text, "__VIEWSTATEC")
-        eventvalidation2 = self._parse_hidden_value(login_resp.text, "__EVENTVALIDATION")
-
-        data_confirm = {
-            "ctl00$ctl00$body$ctl00": "ctl00$ctl00$body$ctl00|ctl00$ctl00$body$body$CtlConfiar$CtlSeguro",
-            "ctl00$ctl00$body$body$CtlConfiar$CtlSeguro": "Recordar\n",
-        }
-
-        self._post_form(login_url, viewstatec2, eventvalidation2, csrftoken, data_confirm)
-
-        logging.info("Logged in as %s", self._email)
+    def login_with_cookies(self, cookies: list[dict]) -> None:
+        self._load_cookies(cookies)
         self.logged = True
-        self._password = None
+        logging.info("Session restored from %d cookies", len(cookies))
 
-    def _post_form(self, url, viewstatec, eventvalidation, csrftoken, extra):
-        data = {
-            "CSRFToken": csrftoken,
-            "__EVENTTARGET": "",
-            "__EVENTARGUMENT": "",
-            "__VIEWSTATEC": viewstatec,
-            "__VIEWSTATE": "",
-            "__EVENTVALIDATION": eventvalidation,
-            "__ASYNCPOST": "true",
-            **extra,
-        }
-        resp = self._session.post(url, data=data, headers=_HEADERS, timeout=10)
-        resp.raise_for_status()
-        return resp
+    def login_with_playwright(self) -> list[dict]:
+        """
+        Drive a real browser to complete the JS-based login flow.
+        Returns cookies to be cached in state for subsequent runs.
+        Requires: playwright install chromium
+        """
+        from playwright.sync_api import sync_playwright
 
-    @staticmethod
-    def _parse_hidden_value(text: str, field_name: str) -> str:
-        idx = text.index(field_name)
-        return text[idx + len(field_name) + 1:].split("|")[0]
+        # WodBuster uses Firebase + AJAX — no plain HTTP login possible.
+        # The ?cb= param tells the main login to authenticate for this box subdomain.
+        box_name = urlparse(self._box_url).hostname.split(".")[0]
+        start_url = (
+            f"https://wodbuster.com/account/login.aspx"
+            f"?cb={box_name}&ReturnUrl={self._box_url}/user/"
+        )
+
+        logging.info("Launching browser for login...")
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                context = browser.new_context(user_agent=_HEADERS["User-Agent"])
+                page = context.new_page()
+
+                page.goto(start_url, timeout=30000)
+                page.fill('input[name="ctl00$ctl00$body$body$CtlLogin$IoEmail"]', self._email)
+                page.fill('input[name="ctl00$ctl00$body$body$CtlLogin$IoPassword"]', self._password)
+                page.click('input[name="ctl00$ctl00$body$body$CtlLogin$CtlAceptar"]')
+
+                page.wait_for_load_state("networkidle", timeout=15000)
+
+                seguro = page.locator('input[value="CtlSeguro"]')
+                seguro.wait_for(state="visible", timeout=10000)
+                seguro.check()
+                page.locator('input[name="ctl00$ctl00$body$body$CtlConfiar$CtlSeguro"]').click()
+                page.wait_for_url(f"{self._box_url}/**", timeout=20000)
+
+                cookies = context.cookies()
+
+        finally:
+            self._password = None
+
+        logging.info("Browser login succeeded, extracted %d cookies", len(cookies))
+        self._load_cookies(cookies)
+        self.logged = True
+        return cookies
+
+    def _load_cookies(self, cookies: list[dict]) -> None:
+        for c in cookies:
+            self._session.cookies.set(c["name"], c["value"], domain=c.get("domain", "").lstrip("."))
 
     def get_classes(self, date: datetime.date) -> tuple:
         midnight = _UTC_TZ.localize(datetime.datetime.combine(date, datetime.time.min))
@@ -108,8 +97,11 @@ class Scraper:
 
     def _get_json(self, url: str) -> dict:
         resp = self._session.get(url, headers=_HEADERS, allow_redirects=False, timeout=10)
-        if resp.status_code == 302 and "login" in resp.headers.get("Location", ""):
-            raise LoginError("Session expired — redirect to login")
+        if resp.status_code == 302:
+            location = resp.headers.get("Location", "")
+            if "login" in location:
+                raise LoginError("Cookies expired — need to re-login")
+            raise InvalidWodBusterResponse(f"Unexpected redirect to: {location}")
         if resp.status_code != 200:
             raise InvalidWodBusterResponse(f"Unexpected status {resp.status_code}")
         self._check_cloudflare(resp)

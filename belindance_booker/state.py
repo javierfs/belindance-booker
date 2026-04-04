@@ -35,7 +35,7 @@ def save_state(gist_id: str, gh_pat: str, state: dict) -> None:
 
 
 def _empty_state(month: str) -> dict:
-    return {"month": month, "bookings": [], "consecutive_errors": 0}
+    return {"month": month, "bookings": [], "consecutive_errors": 0, "cookies": []}
 
 
 def _auth_headers(gh_pat: str) -> dict:
