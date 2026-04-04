@@ -1,0 +1,48 @@
+name: Turbo Booker (Days 1-5)
+
+on:
+  schedule:
+    # Runs every 5 minutes on days 1-5 of the month (UTC)
+    # Each job polls internally for 5 minutes at 10-second intervals
+    # Effective detection window: ~10 seconds
+    - cron: '*/5 * 1-5 * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (no actual booking)'
+        type: boolean
+        default: false
+
+jobs:
+  book:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Configure /etc/hosts (Cloudflare bypass)
+        if: ${{ vars.WB_SERVER_IP != '' }}
+        run: |
+          echo "${{ vars.WB_SERVER_IP }} wodbuster.com" | sudo tee -a /etc/hosts
+          echo "${{ vars.WB_SERVER_IP }} belindance.wodbuster.com" | sudo tee -a /etc/hosts
+
+      - name: Run turbo booker
+        env:
+          WB_EMAIL: ${{ secrets.WB_EMAIL }}
+          WB_PASSWORD: ${{ secrets.WB_PASSWORD }}
+          BOX_URL: ${{ vars.BOX_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GIST_ID: ${{ secrets.GIST_ID }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: python main.py --turbo --duration 295 --interval 10

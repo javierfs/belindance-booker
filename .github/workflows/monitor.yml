@@ -1,0 +1,46 @@
+name: Monitor (Days 6-28)
+
+on:
+  schedule:
+    # Every 15 minutes on days 6-28 (single scan per run, no turbo)
+    - cron: '*/15 * 6-28 * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (no actual booking)'
+        type: boolean
+        default: false
+
+jobs:
+  book:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Configure /etc/hosts (Cloudflare bypass)
+        if: ${{ vars.WB_SERVER_IP != '' }}
+        run: |
+          echo "${{ vars.WB_SERVER_IP }} wodbuster.com" | sudo tee -a /etc/hosts
+          echo "${{ vars.WB_SERVER_IP }} belindance.wodbuster.com" | sudo tee -a /etc/hosts
+
+      - name: Run booker
+        env:
+          WB_EMAIL: ${{ secrets.WB_EMAIL }}
+          WB_PASSWORD: ${{ secrets.WB_PASSWORD }}
+          BOX_URL: ${{ vars.BOX_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GIST_ID: ${{ secrets.GIST_ID }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: python main.py
