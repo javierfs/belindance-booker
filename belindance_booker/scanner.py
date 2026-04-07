@@ -42,7 +42,8 @@ def find_private_classes(scraper: Scraper, class_name: str) -> list[PrivateClass
             for valor in entry.get("Valores", []):
                 val = valor.get("Valor", {})
                 name = _extract_class_name(val)
-                if name and class_name.upper() in name.upper():
+                keywords = class_name.upper().split()
+                if name and all(kw in name.upper() for kw in keywords):
                     status = valor.get("TipoEstado", "")
                     if status == "Borrable":
                         logging.info("Already booked: %s on %s", name, date)
