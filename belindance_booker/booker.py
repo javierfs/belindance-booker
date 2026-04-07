@@ -116,16 +116,27 @@ def _slot_priority(c: PrivateClass) -> int:
     return 3
 
 
+def _same_week(a: datetime.date, b: datetime.date) -> bool:
+    return a.isocalendar()[:2] == b.isocalendar()[:2]
+
+
 def _pick_candidate(
     candidates: List[PrivateClass],
     booked_dates: List[datetime.date],
     min_days: int,
 ) -> Optional[PrivateClass]:
-    eligible = [c for c in candidates if not any(abs((c.date - d).days) < min_days for d in booked_dates)]
-    if not eligible:
-        return None
-    eligible.sort(key=lambda c: (_slot_priority(c), c.date, c.time))
-    return eligible[0]
+    def eligible_for(gap: int) -> Optional[PrivateClass]:
+        ok = [
+            c for c in candidates
+            if not any(abs((c.date - d).days) < gap or _same_week(c.date, d) for d in booked_dates)
+        ]
+        if not ok:
+            return None
+        ok.sort(key=lambda c: (_slot_priority(c), c.date, c.time))
+        return ok[0]
+
+    # Prefer 14-day gap, fall back to 7-day if nothing found
+    return eligible_for(min_days) or eligible_for(7)
 
 
 def _maybe_alert(config: Config, consecutive_errors: int, message: str) -> None:
