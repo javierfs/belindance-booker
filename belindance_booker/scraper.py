@@ -2,9 +2,23 @@ import datetime
 import logging
 import requests
 import pytz
+import shutil
+import os
 from urllib.parse import urlparse
 
 from .exceptions import LoginError, InvalidWodBusterResponse, CloudflareBlocked, BookingFailed
+
+
+def _cleanup_broken_playwright_cache():
+    """Remove broken headless_shell cache that prevents chromium from launching."""
+    cache_dir = os.path.expanduser("~/Library/Caches/ms-playwright")
+    headless_shell = os.path.join(cache_dir, "chromium_headless_shell-1208")
+    if os.path.exists(headless_shell):
+        try:
+            shutil.rmtree(headless_shell)
+            logging.debug("Cleaned up broken Playwright headless_shell cache")
+        except Exception as e:
+            logging.debug("Could not clean up headless_shell cache: %s", e)
 
 _HEADERS = {
     "User-Agent": (
@@ -53,9 +67,15 @@ class Scraper:
         cookies = []  # Initialize before try block
         # Use provided password or fall back to instance password
         login_password = password if password is not None else self._password
+
+        # Clean up broken Playwright cache before attempting to launch
+        _cleanup_broken_playwright_cache()
+
         try:
             with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
+                # Use the full chromium executable, not headless_shell
+                chromium_path = p.chromium.executable_path
+                browser = p.chromium.launch(executable_path=chromium_path, headless=True)
                 context = browser.new_context(user_agent=_HEADERS["User-Agent"])
                 page = context.new_page()
 
