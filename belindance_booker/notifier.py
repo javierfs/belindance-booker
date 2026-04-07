@@ -37,6 +37,7 @@ def send(smtp_username: str, smtp_password: str, recipient: str, subject: str, b
             logging.info("Sending email...")
             server.sendmail(smtp_username, recipient, msg.as_string())
 
-        logging.info("✅ Email notification sent successfully to %s", recipient)
+        logging.info("Email notification sent successfully to %s", recipient)
     except Exception as e:
-        logging.error("❌ Failed to send email notification: %s", e)
+        logging.error("Failed to send email notification: %s", e)
+        raise

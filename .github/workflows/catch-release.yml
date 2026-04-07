@@ -1,11 +1,11 @@
-name: Turbo Booker (Days 1-5)
+name: Catch Class Release
 
 on:
   schedule:
-    # Runs every 5 minutes on days 1-5 of the month (UTC)
-    # Each job polls internally for 5 minutes at 10-second intervals
-    # Effective detection window: ~10 seconds
-    - cron: '*/5 * 1-5 * *'
+    # 13:50-14:30 UTC = 14:50-15:30 Canary (WEST/UTC+1)
+    # Runs every minute during the window
+    - cron: '50-59 13 * * *'
+    - cron: '0-30 14 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -16,7 +16,7 @@ on:
 jobs:
   book:
     runs-on: ubuntu-latest
-    timeout-minutes: 7
+    timeout-minutes: 3
 
     steps:
       - uses: actions/checkout@v4
@@ -37,7 +37,7 @@ jobs:
           echo "${{ vars.WB_SERVER_IP }} wodbuster.com" | sudo tee -a /etc/hosts
           echo "${{ vars.WB_SERVER_IP }} belindance.wodbuster.com" | sudo tee -a /etc/hosts
 
-      - name: Run turbo booker
+      - name: Run booker
         env:
           WB_EMAIL: ${{ secrets.WB_EMAIL }}
           WB_PASSWORD: ${{ secrets.WB_PASSWORD }}
@@ -48,5 +48,9 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           GIST_ID: ${{ secrets.GIST_ID }}
           GH_PAT: ${{ secrets.GH_PAT }}
+          CHECK_TIME_WINDOW_ENABLED: 'true'
+          CHECK_TIME_WINDOW_START: '14:50'
+          CHECK_TIME_WINDOW_END: '15:30'
+          CHECK_TIME_WINDOW_TIMEZONE: 'Atlantic/Canary'
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
-        run: python main.py --turbo --duration 295 --interval 10
+        run: python main.py
