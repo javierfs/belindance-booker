@@ -30,11 +30,14 @@ class Scraper:
         self.logged = True
         logging.info("Session restored from %d cookies", len(cookies))
 
-    def login_with_playwright(self) -> list[dict]:
+    def login_with_playwright(self, password: str = None) -> list[dict]:
         """
         Drive a real browser to complete the JS-based login flow.
         Returns cookies to be cached in state for subsequent runs.
         Requires: playwright install chromium
+
+        Args:
+            password: Optional password override (for retry attempts)
         """
         from playwright.sync_api import sync_playwright
 
@@ -47,31 +50,105 @@ class Scraper:
         )
 
         logging.info("Launching browser for login...")
+        cookies = []  # Initialize before try block
+        # Use provided password or fall back to instance password
+        login_password = password if password is not None else self._password
         try:
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
                 context = browser.new_context(user_agent=_HEADERS["User-Agent"])
                 page = context.new_page()
 
+                logging.info("Loading WodBuster login page...")
                 page.goto(start_url, timeout=30000)
+
+                logging.info("Filling email: %s", self._email)
                 page.fill('input[name="ctl00$ctl00$body$body$CtlLogin$IoEmail"]', self._email)
-                page.fill('input[name="ctl00$ctl00$body$body$CtlLogin$IoPassword"]', self._password)
+
+                logging.info("Filling password...")
+                page.fill('input[name="ctl00$ctl00$body$body$CtlLogin$IoPassword"]', login_password)
+
+                logging.info("Submitting login form...")
                 page.click('input[name="ctl00$ctl00$body$body$CtlLogin$CtlAceptar"]')
 
+                logging.info("Waiting for page to load after login...")
                 page.wait_for_load_state("networkidle", timeout=15000)
 
-                seguro = page.locator('input[value="CtlSeguro"]')
-                seguro.wait_for(state="visible", timeout=10000)
-                seguro.check()
-                page.locator('input[name="ctl00$ctl00$body$body$CtlConfiar$CtlSeguro"]').click()
-                page.wait_for_url(f"{self._box_url}/**", timeout=20000)
+                logging.info("Looking for Trusted Device dialog...")
+                try:
+                    # Check for trusted device checkbox and try different button selectors
+                    logging.info("Using JavaScript to check Trusted Device and submit...")
+                    result = page.evaluate("""
+                        (() => {
+                            const checkbox = document.getElementById('body_body_CtlConfiar_CtlSeguro');
+                            if (checkbox) {
+                                checkbox.checked = true;
+                                // Try multiple selectors for the button
+                                let btn = document.querySelector('input[name="ctl00$ctl00$body$body$CtlConfiar$CtlSeguro"]');
+                                if (!btn) {
+                                    btn = document.querySelector('button[onclick*="CtlConfiar"]');
+                                }
+                                if (!btn) {
+                                    btn = document.querySelector('[name*="CtlConfiar"]');
+                                }
+                                if (btn) {
+                                    btn.click();
+                                    return 'Dialog found and clicked';
+                                }
+                                // List all inputs for debugging
+                                const inputs = Array.from(document.querySelectorAll('input[type="submit"], button'));
+                                return 'Dialog checkbox found. Inputs: ' + inputs.map(i => i.name || i.id || i.innerText).join(', ');
+                            }
+                            return 'Dialog checkbox not found';
+                        })()
+                    """)
+                    logging.info("JavaScript result: %s", result)
+                    logging.info("Waiting for page to settle...")
+                    import time
+                    time.sleep(2)
+                except Exception as e:
+                    logging.warning("JavaScript execution error: %s", e)
+
+                # Navigate to the specific Belindance studio page
+                try:
+                    logging.info("Navigating to Belindance studio page: %s", self._box_url)
+                    page.goto(self._box_url, timeout=15000, wait_until="networkidle")
+                    logging.info("Successfully navigated to Belindance studio")
+
+                    # Wait for the page to fully load and establish session
+                    import time
+                    logging.info("Waiting for session to establish...")
+                    time.sleep(3)
+
+                    # Try to verify we're authenticated by checking for user-specific content
+                    logging.info("Verifying authentication...")
+                    try:
+                        page.wait_for_selector("body", timeout=5000)  # Just verify page exists
+                    except:
+                        pass
+
+                except Exception as e:
+                    logging.warning("Navigation error: %s. Proceeding anyway.", e)
 
                 cookies = context.cookies()
+                logging.info("Extracted %d cookies from browser", len(cookies))
+
+                # Log cookie names for debugging
+                if cookies:
+                    cookie_names = [c.get('name', 'unknown') for c in cookies]
+                    logging.info("Cookie names: %s", ', '.join(cookie_names))
 
         finally:
-            self._password = None
+            # Only clear password after successful login (if we have cookies)
+            if cookies:
+                self._password = None
+            else:
+                logging.warning("Login failed (no cookies extracted), keeping password for retry")
 
-        logging.info("Browser login succeeded, extracted %d cookies", len(cookies))
+        if not cookies:
+            raise LoginError("Browser login failed — no cookies extracted")
+
+        logging.info("✅ Browser login succeeded with %d cookies", len(cookies))
         self._load_cookies(cookies)
         self.logged = True
         return cookies

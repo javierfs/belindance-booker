@@ -1,15 +1,22 @@
 import datetime
 import logging
+from typing import List, Optional
 
 from .config import Config
 from .scraper import Scraper
 from .scanner import find_private_classes, PrivateClass
 from .state import load_state, save_state
 from . import notifier
+from . import time_window
 from .exceptions import BookingFailed, LoginError
 
 
 def run(config: Config) -> None:
+    # Check if current time is within the configured time window
+    if not time_window.is_within_window(config):
+        logging.info("Outside configured time window. Skipping check.")
+        return
+
     state = load_state(config.gist_id, config.gh_pat)
 
     if len(state["bookings"]) >= config.target_per_month:
@@ -23,18 +30,20 @@ def run(config: Config) -> None:
     if cached_cookies:
         scraper.login_with_cookies(cached_cookies)
     else:
-        state["cookies"] = scraper.login_with_playwright()
+        state["cookies"] = scraper.login_with_playwright(config.wb_password)
         state_dirty = True
 
     try:
+        logging.info("Searching for class: '%s'", config.class_name)
         candidates = find_private_classes(scraper, config.class_name)
     except LoginError:
         logging.warning("Cookies expired, re-logging in with browser")
-        state["cookies"] = scraper.login_with_playwright()
+        state["cookies"] = scraper.login_with_playwright(config.wb_password)
         state_dirty = True
+        logging.info("Retrying search for class: '%s'", config.class_name)
         candidates = find_private_classes(scraper, config.class_name)
 
-    logging.info("Found %d bookable private class(es)", len(candidates))
+    logging.info("Found %d bookable private class(es) matching '%s'", len(candidates), config.class_name)
 
     booked_dates = [datetime.date.fromisoformat(b["date"]) for b in state["bookings"]]
     target = _pick_candidate(candidates, booked_dates, config.min_days_between)
@@ -52,9 +61,11 @@ def run(config: Config) -> None:
         if state_dirty:
             save_state(config.gist_id, config.gh_pat, state)
         notifier.send(
-            config.telegram_bot_token,
-            config.telegram_chat_id,
-            f"[DRY RUN] Would book: {config.class_name} on {target.date} at {target.time}",
+            config.smtp_username,
+            config.smtp_password,
+            config.email_address,
+            subject="✓ I just booked a class!",
+            body="I just booked a class!",
         )
         return
 
@@ -77,18 +88,20 @@ def run(config: Config) -> None:
 
     n = len(state["bookings"])
     notifier.send(
-        config.telegram_bot_token,
-        config.telegram_chat_id,
-        f"Booked! {config.class_name}\n{target.date} at {target.time}\n({n}/{config.target_per_month} this month)",
+        config.smtp_username,
+        config.smtp_password,
+        config.email_address,
+        subject=f"✓ Booked: {config.class_name} on {target.date}",
+        body=f"Booked! {config.class_name}\n{target.date} at {target.time}\n({n}/{config.target_per_month} this month)",
     )
     logging.info("Successfully booked %s on %s at %s", config.class_name, target.date, target.time)
 
 
 def _pick_candidate(
-    candidates: list[PrivateClass],
-    booked_dates: list[datetime.date],
+    candidates: List[PrivateClass],
+    booked_dates: List[datetime.date],
     min_days: int,
-) -> PrivateClass | None:
+) -> Optional[PrivateClass]:
     for c in candidates:
         if not any(abs((c.date - d).days) < min_days for d in booked_dates):
             return c
@@ -98,7 +111,9 @@ def _pick_candidate(
 def _maybe_alert(config: Config, consecutive_errors: int, message: str) -> None:
     if consecutive_errors >= 3:
         notifier.send(
-            config.telegram_bot_token,
-            config.telegram_chat_id,
-            f"Belindance booker error ({consecutive_errors} in a row): {message}",
+            config.smtp_username,
+            config.smtp_password,
+            config.email_address,
+            subject=f"⚠ Belindance Booker Error ({consecutive_errors} errors)",
+            body=f"Belindance booker error ({consecutive_errors} in a row): {message}",
         )

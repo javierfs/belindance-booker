@@ -1,4 +1,7 @@
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 from dataclasses import dataclass, field
 
 
@@ -7,8 +10,9 @@ class Config:
     wb_email: str
     wb_password: str
     box_url: str
-    telegram_bot_token: str
-    telegram_chat_id: str
+    email_address: str
+    smtp_username: str
+    smtp_password: str
     gist_id: str
     gh_pat: str
     target_per_month: int
@@ -18,6 +22,10 @@ class Config:
     turbo: bool
     turbo_duration: int
     poll_interval: int
+    check_time_window_enabled: bool
+    check_time_window_start: str
+    check_time_window_end: str
+    check_time_window_timezone: str
 
 
 def load_config() -> Config:
@@ -31,8 +39,9 @@ def load_config() -> Config:
         wb_email=required("WB_EMAIL"),
         wb_password=required("WB_PASSWORD"),
         box_url=os.environ.get("BOX_URL", "https://belindance.wodbuster.com"),
-        telegram_bot_token=required("TELEGRAM_BOT_TOKEN"),
-        telegram_chat_id=required("TELEGRAM_CHAT_ID"),
+        email_address=required("EMAIL_ADDRESS"),
+        smtp_username=required("SMTP_USERNAME"),
+        smtp_password=required("SMTP_PASSWORD"),
         gist_id=required("GIST_ID"),
         gh_pat=required("GH_PAT"),
         target_per_month=int(os.environ.get("TARGET_PER_MONTH", "2")),
@@ -42,4 +51,8 @@ def load_config() -> Config:
         turbo=os.environ.get("TURBO", "false").lower() == "true",
         turbo_duration=int(os.environ.get("TURBO_DURATION", "300")),
         poll_interval=int(os.environ.get("POLL_INTERVAL", "10")),
+        check_time_window_enabled=os.environ.get("CHECK_TIME_WINDOW_ENABLED", "false").lower() == "true",
+        check_time_window_start=os.environ.get("CHECK_TIME_WINDOW_START", "14:50"),
+        check_time_window_end=os.environ.get("CHECK_TIME_WINDOW_END", "15:30"),
+        check_time_window_timezone=os.environ.get("CHECK_TIME_WINDOW_TIMEZONE", "Atlantic/Canary"),
     )
