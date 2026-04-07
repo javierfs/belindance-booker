@@ -2,10 +2,9 @@ name: Catch Class Release
 
 on:
   schedule:
-    # 13:50-14:30 UTC = 14:50-15:30 Canary (WEST/UTC+1)
-    # Runs every minute during the window
-    - cron: '50-59 13 * * *'
-    - cron: '0-30 14 * * *'
+    # 13:47 UTC = 14:47 Canary (WEST/UTC+1) — starts just before the 14:50 window
+    # Polls every 5 seconds internally for 45 minutes
+    - cron: '47 13 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -16,7 +15,7 @@ on:
 jobs:
   book:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 50
 
     steps:
       - uses: actions/checkout@v4
@@ -37,7 +36,7 @@ jobs:
           echo "${{ vars.WB_SERVER_IP }} wodbuster.com" | sudo tee -a /etc/hosts
           echo "${{ vars.WB_SERVER_IP }} belindance.wodbuster.com" | sudo tee -a /etc/hosts
 
-      - name: Run booker
+      - name: Run turbo booker (polls every 5s for 45 min)
         env:
           WB_EMAIL: ${{ secrets.WB_EMAIL }}
           WB_PASSWORD: ${{ secrets.WB_PASSWORD }}
@@ -53,4 +52,4 @@ jobs:
           CHECK_TIME_WINDOW_END: '15:30'
           CHECK_TIME_WINDOW_TIMEZONE: 'Atlantic/Canary'
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
-        run: python main.py
+        run: python main.py --turbo --duration 2700 --interval 5
