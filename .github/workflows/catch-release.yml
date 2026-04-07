@@ -8,6 +8,10 @@ on:
         type: boolean
         default: false
 
+concurrency:
+  group: booker
+  cancel-in-progress: true
+
 jobs:
   book:
     runs-on: ubuntu-latest
