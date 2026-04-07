@@ -97,15 +97,35 @@ def run(config: Config) -> None:
     logging.info("Successfully booked %s on %s at %s", config.class_name, target.date, target.time)
 
 
+def _slot_priority(c: PrivateClass) -> int:
+    """
+    Lower number = higher priority.
+    1. Friday 18h
+    2. Friday 17h
+    3. Friday 19h
+    4. Any other weekday (Mon/Wed/etc.)
+    """
+    is_friday = c.date.weekday() == 4  # Monday=0 … Friday=4
+    hour = int(c.time.split(":")[0])
+    if is_friday and hour == 18:
+        return 0
+    if is_friday and hour == 17:
+        return 1
+    if is_friday and hour == 19:
+        return 2
+    return 3
+
+
 def _pick_candidate(
     candidates: List[PrivateClass],
     booked_dates: List[datetime.date],
     min_days: int,
 ) -> Optional[PrivateClass]:
-    for c in candidates:
-        if not any(abs((c.date - d).days) < min_days for d in booked_dates):
-            return c
-    return None
+    eligible = [c for c in candidates if not any(abs((c.date - d).days) < min_days for d in booked_dates)]
+    if not eligible:
+        return None
+    eligible.sort(key=lambda c: (_slot_priority(c), c.date, c.time))
+    return eligible[0]
 
 
 def _maybe_alert(config: Config, consecutive_errors: int, message: str) -> None:

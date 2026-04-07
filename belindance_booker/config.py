@@ -45,7 +45,7 @@ def load_config() -> Config:
         gist_id=required("GIST_ID"),
         gh_pat=required("GH_PAT"),
         target_per_month=int(os.environ.get("TARGET_PER_MONTH", "2")),
-        min_days_between=int(os.environ.get("MIN_DAYS_BETWEEN", "5")),
+        min_days_between=int(os.environ.get("MIN_DAYS_BETWEEN", "14")),
         class_name=os.environ.get("CLASS_NAME", "CLASES PARTICULARES BELINDA"),
         dry_run=os.environ.get("DRY_RUN", "false").lower() == "true",
         turbo=os.environ.get("TURBO", "false").lower() == "true",
