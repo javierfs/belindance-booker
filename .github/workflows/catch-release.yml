@@ -1,10 +1,6 @@
 name: Catch Class Release
 
 on:
-  schedule:
-    # 13:47 UTC = 14:47 Canary (WEST/UTC+1) — starts just before the 14:50 window
-    # Polls every 5 seconds internally for 45 minutes
-    - cron: '47 13 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
