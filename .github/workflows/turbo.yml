@@ -48,5 +48,8 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           GIST_ID: ${{ secrets.GIST_ID }}
           GH_PAT: ${{ secrets.GH_PAT }}
+          BOOKING_START_DATE: '2026-05-18'
+          BOOKING_END_DATE: '2026-05-31'
+          MAX_BOOKINGS_PER_WEEK: '1'
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
         run: python main.py --turbo --duration 295 --interval 10

@@ -48,8 +48,11 @@ jobs:
           GIST_ID: ${{ secrets.GIST_ID }}
           GH_PAT: ${{ secrets.GH_PAT }}
           CHECK_TIME_WINDOW_ENABLED: 'true'
-          CHECK_TIME_WINDOW_START: '14:50'
-          CHECK_TIME_WINDOW_END: '15:30'
+          CHECK_TIME_WINDOW_START: '09:00'
+          CHECK_TIME_WINDOW_END: '15:00'
           CHECK_TIME_WINDOW_TIMEZONE: 'Atlantic/Canary'
+          BOOKING_START_DATE: '2026-05-18'
+          BOOKING_END_DATE: '2026-05-31'
+          MAX_BOOKINGS_PER_WEEK: '1'
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
         run: python main.py --turbo --duration 2700 --interval 5
