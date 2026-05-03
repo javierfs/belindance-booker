@@ -45,11 +45,13 @@ def run(config: Config) -> None:
 
     logging.info("Found %d bookable private class(es) matching '%s'", len(candidates), config.class_name)
 
+    candidates = _filter_by_booking_date_range(candidates, config.booking_start_date, config.booking_end_date)
     booked_dates = [datetime.date.fromisoformat(b["date"]) for b in state["bookings"]]
-    target = _pick_candidate(candidates, booked_dates, config.min_days_between)
+    target = _pick_candidate(candidates, booked_dates, config.min_days_between, config.max_bookings_per_week)
 
     if target is None:
         logging.info("No suitable class found (none available or all too close to existing bookings)")
+        _notify_no_slots_once_per_day(config, state)
         state["consecutive_errors"] = 0
         save_state(config.gist_id, config.gh_pat, state)
         return
@@ -66,6 +68,8 @@ def run(config: Config) -> None:
             config.email_address,
             subject="✓ I just booked a class!",
             body="I just booked a class!",
+            smtp_host=config.smtp_host,
+            smtp_port=config.smtp_port,
         )
         return
 
@@ -93,6 +97,8 @@ def run(config: Config) -> None:
         config.email_address,
         subject=f"✓ Booked: {config.class_name} on {target.date}",
         body=f"Booked! {config.class_name}\n{target.date} at {target.time}\n({n}/{config.target_per_month} this month)",
+        smtp_host=config.smtp_host,
+        smtp_port=config.smtp_port,
     )
     logging.info("Successfully booked %s on %s at %s", config.class_name, target.date, target.time)
 
@@ -124,11 +130,13 @@ def _pick_candidate(
     candidates: List[PrivateClass],
     booked_dates: List[datetime.date],
     min_days: int,
+    max_bookings_per_week: int,
 ) -> Optional[PrivateClass]:
     def eligible_for(gap: int) -> Optional[PrivateClass]:
         ok = [
             c for c in candidates
-            if not any(abs((c.date - d).days) < gap or _same_week(c.date, d) for d in booked_dates)
+            if not any(abs((c.date - d).days) < gap for d in booked_dates)
+            and sum(1 for d in booked_dates if _same_week(c.date, d)) < max_bookings_per_week
         ]
         if not ok:
             return None
@@ -147,4 +155,43 @@ def _maybe_alert(config: Config, consecutive_errors: int, message: str) -> None:
             config.email_address,
             subject=f"⚠ Belindance Booker Error ({consecutive_errors} errors)",
             body=f"Belindance booker error ({consecutive_errors} in a row): {message}",
+            smtp_host=config.smtp_host,
+            smtp_port=config.smtp_port,
         )
+
+
+def _filter_by_booking_date_range(
+    candidates: List[PrivateClass],
+    booking_start_date: Optional[str],
+    booking_end_date: Optional[str],
+) -> List[PrivateClass]:
+    if not booking_start_date and not booking_end_date:
+        return candidates
+
+    min_date = datetime.date.fromisoformat(booking_start_date) if booking_start_date else datetime.date.min
+    max_date = datetime.date.fromisoformat(booking_end_date) if booking_end_date else datetime.date.max
+
+    return [c for c in candidates if min_date <= c.date <= max_date]
+
+
+def _notify_no_slots_once_per_day(config: Config, state: dict) -> None:
+    if not config.notify_when_no_slots:
+        return
+
+    today = datetime.date.today().isoformat()
+    if state.get("last_no_slots_notification_date") == today:
+        return
+
+    notifier.send(
+        config.smtp_username,
+        config.smtp_password,
+        config.email_address,
+        subject=f"No slots yet for {config.class_name}",
+        body=(
+            f"Checked availability and found no eligible slots for '{config.class_name}'.\n"
+            f"Date window: {config.booking_start_date or 'any'} to {config.booking_end_date or 'any'}."
+        ),
+        smtp_host=config.smtp_host,
+        smtp_port=config.smtp_port,
+    )
+    state["last_no_slots_notification_date"] = today

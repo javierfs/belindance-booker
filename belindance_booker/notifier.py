@@ -4,7 +4,15 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 
-def send(smtp_username: str, smtp_password: str, recipient: str, subject: str, body: str) -> None:
+def send(
+    smtp_username: str,
+    smtp_password: str,
+    recipient: str,
+    subject: str,
+    body: str,
+    smtp_host: str = "smtp.gmail.com",
+    smtp_port: int = 465,
+) -> None:
     """
     Send notification email via Gmail SMTP.
 
@@ -29,13 +37,16 @@ def send(smtp_username: str, smtp_password: str, recipient: str, subject: str, b
         text_part = MIMEText(body, "plain")
         msg.attach(text_part)
 
-        logging.info("Connecting to Gmail SMTP (smtp.gmail.com:465)...")
-        # Send via Gmail SMTP
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        recipients = [r.strip() for r in recipient.split(",") if r.strip()]
+        if not recipients:
+            raise ValueError("At least one recipient email must be provided")
+
+        logging.info("Connecting to SMTP server (%s:%s)...", smtp_host, smtp_port)
+        with smtplib.SMTP_SSL(smtp_host, smtp_port) as server:
             logging.info("Logging in to Gmail...")
             server.login(smtp_username, smtp_password)
             logging.info("Sending email...")
-            server.sendmail(smtp_username, recipient, msg.as_string())
+            server.sendmail(smtp_username, recipients, msg.as_string())
 
         logging.info("Email notification sent successfully to %s", recipient)
     except Exception as e:

@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 from dataclasses import dataclass, field
+from typing import Optional
 
 
 @dataclass
@@ -26,6 +27,12 @@ class Config:
     check_time_window_start: str
     check_time_window_end: str
     check_time_window_timezone: str
+    booking_start_date: Optional[str]
+    booking_end_date: Optional[str]
+    max_bookings_per_week: int
+    smtp_host: str
+    smtp_port: int
+    notify_when_no_slots: bool
 
 
 def load_config() -> Config:
@@ -55,4 +62,10 @@ def load_config() -> Config:
         check_time_window_start=os.environ.get("CHECK_TIME_WINDOW_START", "14:50"),
         check_time_window_end=os.environ.get("CHECK_TIME_WINDOW_END", "15:30"),
         check_time_window_timezone=os.environ.get("CHECK_TIME_WINDOW_TIMEZONE", "Atlantic/Canary"),
+        booking_start_date=os.environ.get("BOOKING_START_DATE"),
+        booking_end_date=os.environ.get("BOOKING_END_DATE"),
+        max_bookings_per_week=int(os.environ.get("MAX_BOOKINGS_PER_WEEK", "1")),
+        smtp_host=os.environ.get("SMTP_HOST", "smtp.gmail.com"),
+        smtp_port=int(os.environ.get("SMTP_PORT", "465")),
+        notify_when_no_slots=os.environ.get("NOTIFY_WHEN_NO_SLOTS", "true").lower() == "true",
     )
