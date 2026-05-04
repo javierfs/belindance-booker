@@ -1,6 +1,8 @@
 name: Catch Class Release
 
 on:
+  schedule:
+    - cron: '30 13 5 5 *'  # 14:30 Canary (13:30 UTC) on May 5 — teacher releases ~15h
   workflow_dispatch:
     inputs:
       dry_run:
@@ -15,7 +17,7 @@ concurrency:
 jobs:
   book:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 85
 
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +38,7 @@ jobs:
           echo "${{ vars.WB_SERVER_IP }} wodbuster.com" | sudo tee -a /etc/hosts
           echo "${{ vars.WB_SERVER_IP }} belindance.wodbuster.com" | sudo tee -a /etc/hosts
 
-      - name: Run turbo booker (polls every 5s for 45 min)
+      - name: Run turbo booker (polls every 5s; 75min on schedule, 45min on manual)
         env:
           WB_EMAIL: ${{ secrets.WB_EMAIL }}
           WB_PASSWORD: ${{ secrets.WB_PASSWORD }}
@@ -48,8 +50,11 @@ jobs:
           GIST_ID: ${{ secrets.GIST_ID }}
           GH_PAT: ${{ secrets.GH_PAT }}
           CHECK_TIME_WINDOW_ENABLED: 'true'
-          CHECK_TIME_WINDOW_START: '14:50'
-          CHECK_TIME_WINDOW_END: '15:30'
+          CHECK_TIME_WINDOW_START: '14:30'
+          CHECK_TIME_WINDOW_END: '15:45'
           CHECK_TIME_WINDOW_TIMEZONE: 'Atlantic/Canary'
+          BOOKING_START_DATE: '2026-05-18'
+          BOOKING_END_DATE: '2026-05-31'
+          MAX_BOOKINGS_PER_WEEK: '1'
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
-        run: python main.py --turbo --duration 2700 --interval 5
+        run: python main.py --turbo --duration ${{ github.event_name == 'schedule' && '4500' || '2700' }} --interval 5
