@@ -53,7 +53,7 @@ jobs:
           CHECK_TIME_WINDOW_START: '14:30'
           CHECK_TIME_WINDOW_END: '15:45'
           CHECK_TIME_WINDOW_TIMEZONE: 'Atlantic/Canary'
-          BOOKING_START_DATE: '2026-05-18'
+          BOOKING_START_DATE: '2026-05-13'
           BOOKING_END_DATE: '2026-05-31'
           MAX_BOOKINGS_PER_WEEK: '1'
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
