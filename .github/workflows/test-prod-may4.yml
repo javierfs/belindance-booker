@@ -2,7 +2,8 @@ name: Prod Test May 4 (18:00 Canary, 5min)
 
 on:
   schedule:
-    - cron: '0 17 4 5 *'  # 18:00 Canary (17:00 UTC) on May 4
+    - cron: '0 17 4 5 *'   # 18:00 Canary (17:00 UTC) on May 4
+    - cron: '32 18 4 5 *'  # auto-trigger test: 19:32 Canary (18:32 UTC) today
   workflow_dispatch:
 
 jobs:
@@ -40,7 +41,7 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           GIST_ID: ${{ secrets.GIST_ID }}
           GH_PAT: ${{ secrets.GH_PAT }}
-          BOOKING_START_DATE: '2026-05-18'
+          BOOKING_START_DATE: '2026-05-13'
           BOOKING_END_DATE: '2026-05-31'
           MAX_BOOKINGS_PER_WEEK: '1'
         run: python main.py --turbo --duration 300 --interval 5

@@ -51,10 +51,10 @@ jobs:
           GH_PAT: ${{ secrets.GH_PAT }}
           CHECK_TIME_WINDOW_ENABLED: 'true'
           CHECK_TIME_WINDOW_START: '14:30'
-          CHECK_TIME_WINDOW_END: '15:45'
+          CHECK_TIME_WINDOW_END: '15:30'
           CHECK_TIME_WINDOW_TIMEZONE: 'Atlantic/Canary'
           BOOKING_START_DATE: '2026-05-13'
           BOOKING_END_DATE: '2026-05-31'
           MAX_BOOKINGS_PER_WEEK: '1'
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
-        run: python main.py --turbo --duration ${{ github.event_name == 'schedule' && '4500' || '2700' }} --interval 5
+        run: python main.py --turbo --duration ${{ github.event_name == 'schedule' && '3600' || '2700' }} --interval 5
