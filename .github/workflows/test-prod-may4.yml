@@ -1,0 +1,46 @@
+name: Prod Test May 4 (18:00 Canary, 5min)
+
+on:
+  schedule:
+    - cron: '0 17 4 5 *'  # 18:00 Canary (17:00 UTC) on May 4
+  workflow_dispatch:
+
+jobs:
+  book:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium --with-deps
+
+      - name: Configure /etc/hosts (Cloudflare bypass)
+        if: ${{ vars.WB_SERVER_IP != '' }}
+        run: |
+          echo "${{ vars.WB_SERVER_IP }} wodbuster.com" | sudo tee -a /etc/hosts
+          echo "${{ vars.WB_SERVER_IP }} belindance.wodbuster.com" | sudo tee -a /etc/hosts
+
+      - name: Run prod test (5min turbo, every 5s, no time window)
+        env:
+          WB_EMAIL: ${{ secrets.WB_EMAIL }}
+          WB_PASSWORD: ${{ secrets.WB_PASSWORD }}
+          BOX_URL: ${{ vars.BOX_URL }}
+          CLASS_NAME: ${{ vars.CLASS_NAME }}
+          EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          GIST_ID: ${{ secrets.GIST_ID }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          BOOKING_START_DATE: '2026-05-18'
+          BOOKING_END_DATE: '2026-05-31'
+          MAX_BOOKINGS_PER_WEEK: '1'
+        run: python main.py --turbo --duration 300 --interval 5
